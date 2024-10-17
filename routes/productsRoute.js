@@ -86,6 +86,29 @@ router.get('/', isAuthenticated, async (req, res) => {
   }
 });
 
+router.get('/admin', async (req, res) => {
+  try {
+    const { category, gender, page = 1, limit = 5 } = req.query;
+    const query = {};
+    const skip = (page - 1) * limit;
+    const [products, total] = await Promise.all([
+      productModel.find(query).skip(skip).limit(Number(limit)),
+      productModel.countDocuments(query)
+    ]);
+    if (products.length === 0) {
+      return res.status(404).json({ message: 'No products found' });
+    }
+    const totalPages = Math.ceil(total / limit);
+    res.status(200).json({
+      products,
+      currentPage: Number(page),
+      totalPages,
+      totalProducts: total
+    });
+  } catch (error) {
+    res.status(500).json({ message: error.message });
+  }
+});
 
 
 router.get('/:id', async (req, res) => {

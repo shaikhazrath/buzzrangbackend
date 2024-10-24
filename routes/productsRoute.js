@@ -142,8 +142,9 @@ router.delete('/:id', async (req, res) => {
   }
 });
 
-router.get('/like/:id', isAuthenticated, async (req, res) => {
+router.get('/like/:id/', isAuthenticated, async (req, res) => {
   try {
+    
     const productId = req.params.id;
     const userId = req.session.userId;
 
@@ -158,6 +159,7 @@ router.get('/like/:id', isAuthenticated, async (req, res) => {
     const alreadyDisliked = product.dislikes.some((dislike) => dislike.userId.equals(userId));
 
     if (alreadyLiked) {
+    console.log('liked')
       // Remove like if already liked
       product.likes = product.likes.filter((like) => !like.userId.equals(userId));
     } else {
@@ -176,7 +178,6 @@ router.get('/like/:id', isAuthenticated, async (req, res) => {
     return res.status(500).json({ message: 'Server error' });
   }
 });
-
 
 router.get('/dislike/:id/', isAuthenticated, async (req, res) => {
   try {
@@ -214,21 +215,38 @@ router.get('/dislike/:id/', isAuthenticated, async (req, res) => {
 router.get('/user/Likes', isAuthenticated, async (req, res) => {
   try {
     const userId = req.session.userId;
+
+    const page = parseInt(req.query.page) || 1; // Default to page 1
+    const limit = parseInt(req.query.limit) || 10; // Default to 10 items per page
+
+    const totalProducts = await productModel.countDocuments({ 'likes.userId': userId });
     
-    console.log(userId)
-    const likedProducts = await productModel.find({ 'likes.userId': userId });
-    console.log(likedProducts)
+    const totalPages = Math.ceil(totalProducts / limit);
+
+    if (page > totalPages) {
+      return res.status(404).json({ message: 'No more liked products available.' });
+    }
+
+    const likedProducts = await productModel
+      .find({ 'likes.userId': userId })
+      .skip((page - 1) * limit) // Skip the previous pages' items
+      .limit(limit) // Limit the result to the desired amount
 
     if (!likedProducts.length) {
       return res.status(404).json({ message: 'No liked products found for this user.' });
     }
 
-    return res.status(200).json(likedProducts);
+    return res.status(200).json({
+      products: likedProducts,
+      totalPages: totalPages,
+      currentPage: page
+    });
   } catch (error) {
     console.error('Error fetching liked products:', error);
     return res.status(500).json({ message: 'Server error' });
   }
 });
+
 
 
 

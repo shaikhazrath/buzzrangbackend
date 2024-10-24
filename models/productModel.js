@@ -73,5 +73,3 @@ export default model('Product', productSchema);
 
 
 
-
-https://www.snitch.co.in/products/blue-stitchless-polo-t-shirt-4mst2498-04?ref=sbesqxzs&variant=44975274524834

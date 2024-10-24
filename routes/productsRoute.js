@@ -35,7 +35,7 @@ router.get('/filters', async (req, res) => {
 router.get('/', isAuthenticated, async (req, res) => {
   try {
     const userId = req.session.userId;
-    const { category, gender, page = 1, limit = 5 } = req.query;
+    const { category, gender, page = 1, limit = 10 } = req.query;
     const query = {};
 
     const [likedProducts, dislikedProducts] = await Promise.all([
@@ -49,42 +49,31 @@ router.get('/', isAuthenticated, async (req, res) => {
     const excludedProductIds = [
       ...likedProducts.map(p => p._id),
       ...dislikedProducts.map(p => p._id),
-      ...cartProductIds
+      ...cartProductIds,
     ];
+
+    if (gender) query.gender = gender;
+    if (category) query.category = { $in: category.split(',') };
 
     query._id = { $nin: excludedProductIds };
 
-    if (category) {
-      query.category = { $in: category.split(',') };
-    }
+    const products = await productModel
+      .find(query)
+      .skip((page - 1) * limit)
+      .limit(Number(limit));
 
-    if (gender) {
-      query.gender = gender;
-    }
+    const totalProducts = await productModel.countDocuments(query);
 
-    const skip = (page - 1) * limit;
-
-    const [products, total] = await Promise.all([
-      productModel.find(query).skip(skip).limit(Number(limit)),
-      productModel.countDocuments(query)
-    ]);
-
-    if (products.length === 0) {
-      return res.status(404).json({ message: 'No products found' });
-    }
-
-    const totalPages = Math.ceil(total / limit);
-
-    res.status(200).json({
+    res.json({
       products,
       currentPage: Number(page),
-      totalPages,
-      totalProducts: total
+      totalPages: Math.ceil(totalProducts / limit),
     });
   } catch (error) {
-    res.status(500).json({ message: error.message });
+    res.status(500).json({ message: 'Server Error' });
   }
 });
+
 
 router.get('/admin', async (req, res) => {
   try {
@@ -153,9 +142,8 @@ router.delete('/:id', async (req, res) => {
   }
 });
 
-router.get('/like/:id/', isAuthenticated, async (req, res) => {
+router.get('/like/:id', isAuthenticated, async (req, res) => {
   try {
-    
     const productId = req.params.id;
     const userId = req.session.userId;
 
@@ -170,7 +158,6 @@ router.get('/like/:id/', isAuthenticated, async (req, res) => {
     const alreadyDisliked = product.dislikes.some((dislike) => dislike.userId.equals(userId));
 
     if (alreadyLiked) {
-    console.log('liked')
       // Remove like if already liked
       product.likes = product.likes.filter((like) => !like.userId.equals(userId));
     } else {
@@ -189,6 +176,7 @@ router.get('/like/:id/', isAuthenticated, async (req, res) => {
     return res.status(500).json({ message: 'Server error' });
   }
 });
+
 
 router.get('/dislike/:id/', isAuthenticated, async (req, res) => {
   try {

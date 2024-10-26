@@ -30,9 +30,6 @@ router.get('/filters', async (req, res) => {
   }
 });
 
-
-
-
 // Helper function to calculate category preferences
 async function calculateCategoryPreferences(userId) {
   const likedProducts = await productModel.find({ 'likes.userId': userId });

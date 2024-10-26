@@ -15,7 +15,7 @@ app.use(express.json());
 app.use(cors());
 
 mongoose
-  .connect('mongodb+srv://shaikhazrathali123:hazrath@cluster0.8lea2.mongodb.net/?retryWrites=true&w=majority&appName=Cluster0')
+  .connect('mongodb+srv://buzzrang000:hazrath@buzzrang.8kpw5.mongodb.net/?retryWrites=true&w=majority&appName=buzzrang')
   .then(() => console.log('Connected to MongoDB'))
   .catch((err) => console.error('Failed to connect to MongoDB:', err));
 
@@ -25,7 +25,7 @@ app.use(
     resave: false,
     saveUninitialized: false,
     store: MongoStore.create({
-      mongoUrl: 'mongodb+srv://shaikhazrathali123:hazrath@cluster0.8lea2.mongodb.net/?retryWrites=true&w=majority&appName=Cluster0',
+      mongoUrl: 'mongodb+srv://buzzrang000:hazrath@buzzrang.8kpw5.mongodb.net/?retryWrites=true&w=majority&appName=buzzrang',
       collectionName: 'sessions',
     }),
     cookie: {

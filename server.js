@@ -6,9 +6,8 @@ import cors from 'cors';
 
 import UserRoutes from './routes/userRoute.js';
 import ProductsRoutes from './routes/productsRoute.js';
+import ClipRoutes from './routes/clipsRoute.js'
 
-import FilterRoutes from './routes/filterRoute.js'
-import fashionNewsRoutes from './routes/fashionNewsRoutes.js'; // Update the path based on your file structure
 
 const app = express();
 
@@ -39,9 +38,8 @@ app.use(
 
 app.use('/user', UserRoutes);
 app.use('/products', ProductsRoutes);
-app.use('/fashion-news', fashionNewsRoutes);
+app.use('/clips', ClipRoutes);
 
-app.use('/filter', FilterRoutes);
 
 
 const PORT = process.env.PORT || 9000;

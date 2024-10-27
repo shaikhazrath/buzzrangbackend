@@ -59,7 +59,7 @@ async function calculateBrandPreferences(userId) {
   return brandScores;
 }
 
-// Helper function to calculate product score based on user preferences
+// Helper function to calculate product score
 function calculateProductScore(product, categoryPreferences, brandPreferences, userGenderPreference) {
   let score = 0;
   
@@ -92,93 +92,118 @@ function calculateProductScore(product, categoryPreferences, brandPreferences, u
   return score;
 }
 
+// Helper function to get user's gender preference
+async function getUserGenderPreference(userId) {
+  const userInteractions = await productModel.find({
+    $or: [
+      { 'likes.userId': userId },
+      { 'dislikes.userId': userId }
+    ]
+  });
+
+  const genderCounts = userInteractions.reduce((acc, product) => {
+    acc[product.gender] = (acc[product.gender] || 0) + 1;
+    return acc;
+  }, {});
+
+  return Object.entries(genderCounts)
+    .sort(([,a], [,b]) => b - a)[0]?.[0] || null;
+}
+
+// Helper function to get excluded product IDs
+async function getExcludedProductIds(userId) {
+  const [likedProducts, dislikedProducts, user] = await Promise.all([
+    productModel.find({ 'likes.userId': userId }).select('_id'),
+    productModel.find({ 'dislikes.userId': userId }).select('_id'),
+    User.findById(userId).select('cart')
+  ]);
+
+  return [
+    ...likedProducts.map(p => p._id),
+    ...dislikedProducts.map(p => p._id),
+    ...user.cart.map(item => item.productId)
+  ];
+}
+
 // Main recommendation route
-// Main recommendation route with filters
 router.get('/', isAuthenticated, async (req, res) => {
   try {
     const userId = req.session.userId;
     const { page = 1, limit = 10, gender, category } = req.query;
+    const skip = (page - 1) * parseInt(limit);
 
-    // Get user's gender preference from previous interactions
-    const user = await User.findById(userId);
-    const userInteractions = await productModel.find({
-      $or: [
-        { 'likes.userId': userId },
-        { 'dislikes.userId': userId }
-      ]
-    });
-
-    const genderCounts = userInteractions.reduce((acc, product) => {
-      acc[product.gender] = (acc[product.gender] || 0) + 1;
-      return acc;
-    }, {});
-
-    const userGenderPreference = Object.entries(genderCounts)
-      .sort(([,a], [,b]) => b - a)[0]?.[0] || null;
-
-    // Get excluded products (already liked, disliked, or in cart)
-    const [likedProducts, dislikedProducts] = await Promise.all([
-      productModel.find({ 'likes.userId': userId }).select('_id'),
-      productModel.find({ 'dislikes.userId': userId }).select('_id')
-    ]);
-
-    const cartProductIds = user.cart.map(item => item.productId);
-    const excludedProductIds = [
-      ...likedProducts.map(p => p._id),
-      ...dislikedProducts.map(p => p._id),
-      ...cartProductIds,
-    ];
-
-    // Calculate user preferences
-    const [categoryPreferences, brandPreferences] = await Promise.all([
+    // Get user preferences and excluded products in parallel
+    const [
+      userGenderPreference,
+      excludedProductIds,
+      categoryPreferences,
+      brandPreferences
+    ] = await Promise.all([
+      getUserGenderPreference(userId),
+      getExcludedProductIds(userId),
       calculateCategoryPreferences(userId),
       calculateBrandPreferences(userId)
     ]);
 
-    // Build query filters
-    const filters = {
+    // Build base query
+    const baseQuery = {
       _id: { $nin: excludedProductIds }
     };
 
-    if (gender) filters.gender = gender;
-    if (category) filters.category = { $in: category.split(',') };
+    if (gender) baseQuery.gender = gender;
+    if (category) {
+      baseQuery.category = { 
+        $in: Array.isArray(category) ? category : category.split(',') 
+      };
+    }
 
-    // Get candidate products
-    const candidateProducts = await productModel
-      .find(filters)
-      .limit(50);
+    // Get total count for pagination
+    const totalCount = await productModel.countDocuments(baseQuery);
+
+    if (totalCount === 0) {
+      return res.status(200).json({
+        products: [],
+        currentPage: Number(page),
+        totalPages: 0,
+        message: 'No more products available'
+      });
+    }
+
+    // Get products for current page
+    const products = await productModel.find(baseQuery)
+      .skip(skip)
+      .limit(parseInt(limit))
+      .lean();
 
     // Score and sort products
-    const scoredProducts = candidateProducts.map(product => ({
-      product,
-      score: calculateProductScore(
+    const scoredProducts = products
+      .map(product => ({
         product,
-        categoryPreferences,
-        brandPreferences,
-        userGenderPreference
-      )
-    }));
-
-    scoredProducts.sort((a, b) => b.score - a.score);
-
-    // Paginate results
-    const startIndex = (page - 1) * limit;
-    const endIndex = startIndex + Number(limit);
-    const paginatedProducts = scoredProducts
-      .slice(startIndex, endIndex)
-      .map(({ product }) => product);
+        score: calculateProductScore(
+          product,
+          categoryPreferences,
+          brandPreferences,
+          userGenderPreference
+        )
+      }))
+      .sort((a, b) => b.score - a.score);
 
     res.json({
-      products: paginatedProducts,
+      products: scoredProducts.map(({ product }) => product),
       currentPage: Number(page),
-      totalPages: Math.ceil(scoredProducts.length / limit),
+      totalPages: Math.ceil(totalCount / limit),
+      totalProducts: totalCount
     });
 
   } catch (error) {
     console.error('Recommendation error:', error);
-    res.status(500).json({ message: 'Server Error' });
+    res.status(500).json({ 
+      message: 'Server Error', 
+      error: process.env.NODE_ENV === 'development' ? error.message : undefined 
+    });
   }
 });
+
 
 
 

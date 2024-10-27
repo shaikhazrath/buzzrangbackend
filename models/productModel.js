@@ -18,25 +18,32 @@ const productSchema = new Schema(
             type: Number,
             required: true,
         },
-        images:
-        {
+        images: {
             type: String,
             required: true,
         },
         category: {
             type: String,
+            trim: true,
+        },
+        categoryfor: {
+            type: String,
+            enum: ['male', 'female'],
+            trim: true,
         },
         brand: {
             type: String,
+            trim: true,
         },
         gender: {
             type: String,
             enum: ['male', 'female'], // Allows only 'male' or 'female'
-            required: true, // Ensures gender is always provided
-            trim: true, // Removes any leading/trailing whitespaces
-          },
+            required: true,
+            trim: true,
+        },
         discountPrice: {
             type: Number,
+            min: 0, // Ensure the discount price is not negative
         },
         likes: [
             {
@@ -58,6 +65,12 @@ const productSchema = new Schema(
         ],
         productWebsiteLink: {
             type: String,
+            validate: {
+                validator: function (v) {
+                    return /^(ftp|http|https):\/\/[^ "]+$/.test(v);
+                },
+                message: props => `${props.value} is not a valid URL!`
+            }
         },
         createdAt: {
             type: Date,
@@ -69,7 +82,6 @@ const productSchema = new Schema(
     }
 );
 
+productSchema.index({ name: 1, brand: 1, category: 1 }, { unique: true });
+
 export default model('Product', productSchema);
-
-
-

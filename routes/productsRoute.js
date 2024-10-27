@@ -23,12 +23,17 @@ router.post('/',async (req, res) => {
 
 router.get('/filters', async (req, res) => {
   try {
-    const categories = await productModel.distinct('category');
-    res.status(200).json(categories);
+    const { gender } = req.query;
+    const categories = await productModel.find({categoryfor:gender}).distinct('category');
+    res.status(200).json({
+      categories,
+    });
   } catch (error) {
     res.status(500).json({ message: error.message });
   }
 });
+
+
 
 // Helper function to calculate category preferences
 async function calculateCategoryPreferences(userId) {
@@ -88,11 +93,12 @@ function calculateProductScore(product, categoryPreferences, brandPreferences, u
 }
 
 // Main recommendation route
+// Main recommendation route with filters
 router.get('/', isAuthenticated, async (req, res) => {
   try {
     const userId = req.session.userId;
-    const { page = 1, limit = 10 } = req.query;
-    
+    const { page = 1, limit = 10, gender, category } = req.query;
+
     // Get user's gender preference from previous interactions
     const user = await User.findById(userId);
     const userInteractions = await productModel.find({
@@ -101,39 +107,47 @@ router.get('/', isAuthenticated, async (req, res) => {
         { 'dislikes.userId': userId }
       ]
     });
-    
+
     const genderCounts = userInteractions.reduce((acc, product) => {
       acc[product.gender] = (acc[product.gender] || 0) + 1;
       return acc;
     }, {});
-    
+
     const userGenderPreference = Object.entries(genderCounts)
       .sort(([,a], [,b]) => b - a)[0]?.[0] || null;
-    
+
     // Get excluded products (already liked, disliked, or in cart)
     const [likedProducts, dislikedProducts] = await Promise.all([
       productModel.find({ 'likes.userId': userId }).select('_id'),
       productModel.find({ 'dislikes.userId': userId }).select('_id')
     ]);
-    
+
     const cartProductIds = user.cart.map(item => item.productId);
     const excludedProductIds = [
       ...likedProducts.map(p => p._id),
       ...dislikedProducts.map(p => p._id),
       ...cartProductIds,
     ];
-    
+
     // Calculate user preferences
     const [categoryPreferences, brandPreferences] = await Promise.all([
       calculateCategoryPreferences(userId),
       calculateBrandPreferences(userId)
     ]);
-    
+
+    // Build query filters
+    const filters = {
+      _id: { $nin: excludedProductIds }
+    };
+
+    if (gender) filters.gender = gender;
+    if (category) filters.category = { $in: category.split(',') };
+
     // Get candidate products
     const candidateProducts = await productModel
-      .find({ _id: { $nin: excludedProductIds } })
-      .limit(50);  // Get a larger pool of candidates for scoring
-    
+      .find(filters)
+      .limit(50);
+
     // Score and sort products
     const scoredProducts = candidateProducts.map(product => ({
       product,
@@ -144,27 +158,28 @@ router.get('/', isAuthenticated, async (req, res) => {
         userGenderPreference
       )
     }));
-    
+
     scoredProducts.sort((a, b) => b.score - a.score);
-    
+
     // Paginate results
     const startIndex = (page - 1) * limit;
     const endIndex = startIndex + Number(limit);
     const paginatedProducts = scoredProducts
       .slice(startIndex, endIndex)
       .map(({ product }) => product);
-    
+
     res.json({
       products: paginatedProducts,
       currentPage: Number(page),
       totalPages: Math.ceil(scoredProducts.length / limit),
     });
-    
+
   } catch (error) {
     console.error('Recommendation error:', error);
     res.status(500).json({ message: 'Server Error' });
   }
 });
+
 
 
 router.get('/admin', async (req, res) => {
@@ -251,7 +266,6 @@ router.get('/like/:id/', isAuthenticated, async (req, res) => {
     const alreadyDisliked = product.dislikes.some((dislike) => dislike.userId.equals(userId));
 
     if (alreadyLiked) {
-    console.log('liked')
       // Remove like if already liked
       product.likes = product.likes.filter((like) => !like.userId.equals(userId));
     } else {

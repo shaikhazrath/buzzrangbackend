@@ -186,25 +186,40 @@ router.get('/admin', async (req, res) => {
   try {
     const { category, gender, page = 1, limit = 5 } = req.query;
     const query = {};
+
+    // Apply filters if category or gender are provided in the query
+    if (category) {
+      query.category = category;
+    }
+    if (gender) {
+      query.gender = gender;
+    }
+
     const skip = (page - 1) * limit;
+
+    // Fetch products sorted by createdAt in descending order
     const [products, total] = await Promise.all([
-      productModel.find(query).skip(skip).limit(Number(limit)),
-      productModel.countDocuments(query)
+      productModel.find(query).sort({ createdAt: -1 }).skip(skip).limit(Number(limit)),
+      productModel.countDocuments(query),
     ]);
+
     if (products.length === 0) {
       return res.status(404).json({ message: 'No products found' });
     }
+
     const totalPages = Math.ceil(total / limit);
+
     res.status(200).json({
       products,
       currentPage: Number(page),
       totalPages,
-      totalProducts: total
+      totalProducts: total,
     });
   } catch (error) {
     res.status(500).json({ message: error.message });
   }
 });
+
 
 
 router.get('/:id', async (req, res) => {
